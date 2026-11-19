@@ -1,61 +1,64 @@
-import threading
-import urllib.error
-import urllib.request
-from collections.abc import Iterator
-
 import pytest
+from fastapi.testclient import TestClient
 
-import app
+import app as app_module
 
 
 @pytest.fixture
-def base_url(monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
+def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setenv("SERVER_MESSAGE", "Первая <публикация>")
-    server = app.create_server(0)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    yield f"http://127.0.0.1:{server.server_address[1]}"
-    server.shutdown()
-    server.server_close()
+    return TestClient(app_module.app)
 
 
-def get(url: str) -> tuple[int, str]:
-    try:
-        with urllib.request.urlopen(url) as response:
-            return response.status, response.read().decode()
-    except urllib.error.HTTPError as error:
-        return error.code, error.read().decode()
+def test_home_shows_heading_and_escaped_message(client: TestClient) -> None:
+    response = client.get("/")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "text/html; charset=utf-8"
+    assert response.text == (
+        "<h1>Привет от Хекслета!</h1><p>Первая &lt;публикация&gt;</p>\n"
+    )
 
 
-def test_home_shows_heading_and_escaped_message(base_url: str) -> None:
-    status, body = get(f"{base_url}/")
-    assert status == 200
-    assert "<h1>Привет от Хекслета!</h1>" in body
-    assert "Первая &lt;публикация&gt;" in body
+@pytest.mark.parametrize("value", [None, ""])
+def test_home_falls_back_to_default_message(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, value: str | None
+) -> None:
+    if value is None:
+        monkeypatch.delenv("SERVER_MESSAGE")
+    else:
+        monkeypatch.setenv("SERVER_MESSAGE", value)
+    assert "<p>Hello, PaaS!</p>" in client.get("/").text
 
 
-def test_error_then_home_still_works(
-    base_url: str, monkeypatch: pytest.MonkeyPatch
+def test_error_goes_to_sentry_and_app_keeps_working(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     captured: list[BaseException] = []
-    monkeypatch.setattr(app.sentry_sdk, "capture_exception", captured.append)
-    assert get(f"{base_url}/error") == (500, "Oops! Something went wrong!\n")
-    assert len(captured) == 1
-    assert get(f"{base_url}/")[0] == 200
+    monkeypatch.setattr(app_module.sentry_sdk, "capture_exception", captured.append)
+    response = client.get("/error")
+    assert response.status_code == 500
+    assert response.headers["content-type"] == "text/plain; charset=utf-8"
+    assert response.text == "Oops! Something went wrong!\n"
+    assert [str(error) for error in captured] == ["Oops! Something went wrong!"]
+    assert client.get("/").status_code == 200
 
 
-def test_unknown_path(base_url: str) -> None:
-    assert get(f"{base_url}/missing") == (404, "not found\n")
+@pytest.mark.parametrize("path", ["/missing", "/docs", "/openapi.json"])
+def test_unknown_path(client: TestClient, path: str) -> None:
+    response = client.get(path)
+    assert response.status_code == 404
+    assert response.headers["content-type"] == "text/plain; charset=utf-8"
+    assert response.text == "not found\n"
 
 
-def test_request_is_logged(base_url: str, capsys: pytest.CaptureFixture[str]) -> None:
-    get(f"{base_url}/missing")
-    assert "GET /missing 404" in capsys.readouterr().out
-
-
-def test_listens_on_all_interfaces() -> None:
-    server = app.create_server(0)
-    try:
-        assert server.server_address[0] == "0.0.0.0"
-    finally:
-        server.server_close()
+def test_request_is_logged(
+    client: TestClient, capsys: pytest.CaptureFixture[str]
+) -> None:
+    client.get("/")
+    client.get("/error")
+    client.get("/missing")
+    assert capsys.readouterr().out.splitlines() == [
+        "GET / 200",
+        "GET /error 500",
+        "GET /missing 404",
+    ]

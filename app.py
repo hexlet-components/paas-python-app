@@ -2,12 +2,21 @@
 
 import html
 import os
-import sys
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from collections.abc import Awaitable, Callable
 
 import sentry_sdk
+from fastapi import FastAPI, Request, Response
+from fastapi.responses import HTMLResponse, PlainTextResponse
+from starlette.exceptions import HTTPException
 
 HEADING = "Привет от Хекслета!"
+
+# Без SENTRY_DSN SDK ничего не отправляет. Интеграции FastAPI и Starlette
+# подключаются сами, когда эти пакеты установлены.
+sentry_sdk.init(dsn=os.environ.get("SENTRY_DSN"))
+
+# Страницы документации FastAPI не входят в контракт: путь /docs отвечает 404.
+app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
 
 def env(name: str, fallback: str) -> str:
@@ -15,52 +24,36 @@ def env(name: str, fallback: str) -> str:
     return value if value else fallback
 
 
-class Handler(BaseHTTPRequestHandler):
-    def do_GET(self) -> None:
-        status = 200
-        content_type = "text/plain; charset=utf-8"
-        if self.path == "/":
-            content_type = "text/html; charset=utf-8"
-            message = html.escape(env("SERVER_MESSAGE", "Hello, PaaS!"))
-            body = f"<h1>{HEADING}</h1><p>{message}</p>"
-        elif self.path == "/error":
-            status = 500
-            body = "Oops! Something went wrong!"
-            try:
-                raise RuntimeError(body)
-            except RuntimeError as error:
-                sentry_sdk.capture_exception(error)
-        else:
-            status = 404
-            body = "not found"
-        payload = f"{body}\n".encode()
-        self.send_response(status)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(payload)))
-        self.end_headers()
-        self.wfile.write(payload)
-        print(f"{self.command} {self.path} {status}", flush=True)
-
-    def log_message(self, format: str, *args: object) -> None:
-        # Строку на каждый запрос печатает do_GET, стандартный журнал не нужен.
-        pass
+@app.middleware("http")
+async def log_request(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    # Стандартный журнал uvicorn выключен флагом --no-access-log,
+    # строку на каждый запрос печатаем сами.
+    response = await call_next(request)
+    target = request.url.path
+    if request.url.query:
+        target = f"{target}?{request.url.query}"
+    print(f"{request.method} {target} {response.status_code}", flush=True)
+    return response
 
 
-def create_server(port: int) -> ThreadingHTTPServer:
-    return ThreadingHTTPServer(("0.0.0.0", port), Handler)
+@app.get("/", response_class=HTMLResponse)
+async def home() -> str:
+    message = html.escape(env("SERVER_MESSAGE", "Hello, PaaS!"))
+    return f"<h1>{HEADING}</h1><p>{message}</p>\n"
 
 
-def main() -> None:
-    # Без SENTRY_DSN SDK ничего не отправляет.
-    sentry_sdk.init(dsn=os.environ.get("SENTRY_DSN"))
-    port = int(env("PORT", "3000"))
-    server = create_server(port)
-    print(f"Listening on http://0.0.0.0:{port}", flush=True)
+@app.get("/error", response_class=PlainTextResponse)
+async def error() -> Response:
+    body = "Oops! Something went wrong!"
     try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        sys.exit(0)
+        raise RuntimeError(body)
+    except RuntimeError as exc:
+        sentry_sdk.capture_exception(exc)
+    return PlainTextResponse(f"{body}\n", status_code=500)
 
 
-if __name__ == "__main__":
-    main()
+@app.exception_handler(404)
+async def not_found(_request: Request, _exc: HTTPException) -> Response:
+    return PlainTextResponse("not found\n", status_code=404)

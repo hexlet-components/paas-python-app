@@ -26,7 +26,7 @@
 | `GET /error` | `500`, событие уходит в Sentry, процесс продолжает работать |
 | другой путь | `404` |
 
-Сервер слушает `0.0.0.0` на порту из `PORT` (по умолчанию `3000`) и печатает строку `GET / 200` на каждый запрос. Sentry SDK включается переменной `SENTRY_DSN`, без неё события не отправляются.
+Приложение написано на [FastAPI](https://fastapi.tiangolo.com/) и работает под сервером [uvicorn](https://uvicorn.dev/). Оно слушает `0.0.0.0` на порту из `PORT` (по умолчанию `3000`) и печатает строку `GET / 200` на каждый запрос, стандартный access log uvicorn выключен флагом `--no-access-log`. Sentry SDK с интеграцией FastAPI включается переменной `SENTRY_DSN`, без неё события не отправляются.
 
 ## Публикация на Render
 
@@ -34,7 +34,7 @@
 | --- | --- |
 | Language | Python |
 | Build Command | `pip install uv && uv sync --frozen --no-dev` |
-| Start Command | `uv run --no-sync python app.py` |
+| Start Command | `uv run --no-sync uvicorn app:app --host 0.0.0.0 --port $PORT --no-access-log` |
 | Environment | `PORT=3000`, `SERVER_MESSAGE`, по желанию `SENTRY_DSN` |
 
 Версию Python задаёт файл `.python-version`.

@@ -5,7 +5,7 @@ build:
 	uv sync --frozen --no-dev
 
 start: build
-	uv run --no-sync python app.py
+	uv run --no-sync uvicorn app:app --host 0.0.0.0 --port $${PORT:-3000} --no-access-log
 
 .PHONY: build start
 
