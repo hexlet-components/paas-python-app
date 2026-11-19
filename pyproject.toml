@@ -1,0 +1,23 @@
+[project]
+name = "paas-python-app"
+version = "0.1.0"
+description = "Учебное приложение курса «Деплой на PaaS»"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "sentry-sdk>=2.75.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+    "ruff>=0.17.5",
+    "ty>=0.0.107",
+]
+
+# Это приложение, а не пакет: устанавливать нечего.
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
