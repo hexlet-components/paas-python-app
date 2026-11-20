@@ -47,7 +47,7 @@ mise run test
 PORT=3000 SERVER_MESSAGE="Первая публикация" mise run start
 ```
 
-`make build` и `make start` повторяют Build Command и Start Command из таблицы выше, `start` перед запуском сам выполняет `build`. Эти две цели работают без mise, нужен только рантайм стека.
+`make build` и `make start` повторяют Build Command и Start Command из таблицы выше, `start` перед запуском сам выполняет `build`. Эти две цели работают без mise, нужны только Python 3.14 и uv, их установка описана в инструкциях Хекслета [по Python](https://github.com/Hexlet/ru-instructions/blob/main/python.md) и [по uv](https://github.com/Hexlet/ru-instructions/blob/main/uv.md).
 
 `make <задача>` вызывает ту же задачу mise.
 
