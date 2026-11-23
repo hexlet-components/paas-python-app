@@ -46,6 +46,8 @@ def test_home_counts_visits(engine: Engine, monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setenv("SERVER_MESSAGE", "Первая публикация")
     # Контекстный менеджер запускает lifespan, то есть миграции.
     with TestClient(app_module.app) as client:
+        # HEAD присылают проверки платформы, посещением он не считается.
+        client.head("/")
         for visit in (1, 2):
             assert client.get("/").text == (
                 "<h1>Привет от Хекслета!</h1><p>Первая публикация</p>"
