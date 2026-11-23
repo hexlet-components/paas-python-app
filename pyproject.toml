@@ -31,3 +31,8 @@ pythonpath = ["."]
 # Миграции Alembic лежат в alembic/versions. Адрес базы env.py берёт из DATABASE_URL.
 [tool.alembic]
 script_location = "%(here)s/alembic"
+
+[tool.ruff.lint.isort]
+# Каталог alembic/ с миграциями лежит в корне, и без явной настройки ruff
+# в разных окружениях по-разному решает, свой это модуль или библиотека.
+known-third-party = ["alembic"]
