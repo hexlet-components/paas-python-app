@@ -22,7 +22,7 @@
 
 | Запрос | Ответ |
 | --- | --- |
-| `GET /` | `200`, заголовок «Привет от Хекслета!» и значение `SERVER_MESSAGE` |
+| `GET /` | `200`, заголовок «Привет от Хекслета!», значение `SERVER_MESSAGE`, с `DATABASE_URL` ещё счётчик посещений |
 | `GET /error` | `500`, событие уходит в Sentry, процесс продолжает работать |
 | другой путь | `404` |
 
@@ -35,9 +35,17 @@
 | Language | Python |
 | Build Command | `pip install uv && uv sync --frozen --no-dev` |
 | Start Command | `uv run --no-sync uvicorn app:app --host 0.0.0.0 --port $PORT --no-access-log` |
-| Environment | `PORT=3000`, `SERVER_MESSAGE`, по желанию `SENTRY_DSN` |
+| Environment | `PORT=3000`, `SERVER_MESSAGE`, по желанию `SENTRY_DSN` и `DATABASE_URL` |
 
 Версию Python задаёт файл `.python-version`.
+
+## База данных
+
+С переменной `DATABASE_URL` главная страница считает посещения в таблице `page_visits` и показывает строку «Посещений: N». Адрес имеет вид `postgresql://user:password@host:port/name`, порт необязателен. На Render это Internal Database URL базы из того же региона. Без переменной приложение работает без базы, и страница остаётся прежней.
+
+Миграции [Alembic](https://alembic.sqlalchemy.org/) лежат в `alembic/versions`. При запуске uvicorn сначала выполняет lifespan приложения, и тот применяет новые миграции, а запросы сервер начинает принимать после этого. Alembic сам базу не блокирует, поэтому `alembic/env.py` берёт транзакционную advisory-блокировку PostgreSQL перед применением. Из двух экземпляров, запущенных разом, миграцию применяет один, а второй ждёт и видит её уже применённой. Новая миграция создаётся командой `uv run alembic revision -m "описание"`.
+
+Тесты с базой идут, когда задан `TEST_DATABASE_URL`, и очищают эту базу. Без переменной они пропускаются. В CI базу даёт сервис PostgreSQL из `main.yml`.
 
 ## Запуск
 
